@@ -1,0 +1,16 @@
+DEBUG=1
+LOG_FILE=/var/log/routes-setup.log
+
+# Internal interface
+INTERNAL=enp0s31f6
+
+# Outbound interfaces name:dev:ip:gateway
+OUTBOUNDS="isp2:enp59s0u2u4c2:192.168.1.10:192.168.1.254 isp1:enp0s20f0u4u4c2:192.168.0.10:192.168.0.1 mobile:enp0s20f0u5u3:192.168.42.10:192.168.42.129"
+
+# Fixed routes ip:outbound
+FIXED_ROUTES="\
+99.99.99.99:isp2 \
+77.77.77.77:isp1"
+
+# Default route for internal SNAT and local routing 
+DEFAULT_ROUTE="isp1"
