@@ -9,6 +9,11 @@ function print_debug
 	test $DEBUG -eq 1 && echo ' [DEBUG] '$@  | tee -a $LOG_FILE
 }
 
+function print_notice
+{
+	echo $@ | tee -a $LOG_FILE
+}
+
 function exec_command
 {
 	local command=$@
@@ -16,8 +21,43 @@ function exec_command
 	$command &>> $LOG_FILE
 }
 
-# Build our arrays.
+function set_rp_filter()
+{
+	local dev=$1
+	local value=$2
+	local rp_filter_path="/proc/sys/net/ipv4/conf/${dev}/rp_filter"
+	if [ $(cat $rp_filter_path) -eq $value ]
+	then
+		print_debug "Setting mode '$value' for device '${dev}'..."
+		echo $value >> $rp_filter_path
+	fi
+}
 
+function add_rule()
+{
+	local table_name=$1
+	local chain_name=$2
+	shift 2
+	local rule="$@"
+	print_debug "Checking if table $table_name has been created..."
+	if [ "$(eval echo \$table_${table_name}_created)" != "1" ]
+	then
+		print_debug "Creating table '$table_name'"
+		exec_command nft add table ${table_name}
+		eval export table_${table_name}_created=1
+	fi
+	print_debug "Checking if chain $chain_name in table $table_name has been created..."
+	if [ "$(eval echo \$chain_${table_name}_${chain_name}_created)" != "1" ]
+	then
+		print_debug "Creating chain $chain_name in table $table_name..."
+  		exec_command nft add chain ${table_name} ${chain_name} { type nat hook ${chain_name} priority 100\;}
+		eval export chain_${table_name}_${chain_name}_created=1
+	fi
+	exec_command nft add rule ${table_name} ${chain_name} ${rule} 
+}
+
+
+# Build our arrays.
 print_debug "Starting operations on $(date)..."
 print_debug "Loading outbounds..."
 for o in $OUTBOUNDS
@@ -30,7 +70,7 @@ do
 done
 
 test -z $1 || DEFAULT_ROUTE=$1
-echo Default route will be: $DEFAULT_ROUTE | tee -a $LOG_FILE
+print_notice "Default route will be: '$DEFAULT_ROUTE'"
 
 WAN_DEV=$(eval echo \$outbounds_dev_${DEFAULT_ROUTE})
 WAN_IP=$(eval echo \$outbounds_ip_${DEFAULT_ROUTE})
@@ -43,15 +83,11 @@ then
   	exec_command nft delete table nat
 	exec_command ip route del default
 
-	print_debug "Creating nat table and chains..."
-  	exec_command nft add table nat
-  	exec_command nft add chain nat postrouting { type nat hook postrouting priority 100\;}
-
-	echo "Adding fixed routes:" | tee -a $LOG_FILE
+	print_notice "Adding fixed routes:"
 	for r in $FIXED_ROUTES
 	do
 		IFS=":" read destination out <<< "$r"
-		echo " - fixed route to '$destination' via '$out'." | tee -a $LOG_FILE
+		print_notice " - fixed route to '$destination' via '$out'." 
 		print_debug "Clearing prvious routes for $destination"
 		exec_command ip route del $destination
 
@@ -61,24 +97,63 @@ then
 		if [ "${FIXED_DEV}" != "" -a "${FIXED_IP}" != "" -a "${FIXED_GW}" != "" ]
 		then
 			print_debug "Setting up route and SNAT for $destination"
-			exec_command nft add rule nat postrouting oifname "${FIXED_DEV}" ip daddr $destination snat to ${FIXED_IP}
+			add_rule $TABLE_NAME postrouting oifname "${FIXED_DEV}" ip daddr $destination snat to ${FIXED_IP}
 			exec_command ip route add $destination via $FIXED_GW dev $FIXED_DEV
 		else
-			echo " - unable to set because '$out' is invalid." | tee -a $LOG_FILE
+			print_notice " - unable to set fixed route because '$out' is invalid."
 		fi
 	done
 
-	echo "Adding default rules..." | tee -a $LOG_FILE
-  	exec_command nft add rule nat postrouting oifname "${WAN_DEV}" iifname ${INTERNAL} snat to ${WAN_IP}
+	print_notice "Adding user routes:"
+	for u in $USER_ROUTES
+	do
+		IFS=":" read username out <<< "$u"
+		USER_DEV=$(eval echo \$outbounds_dev_${out})
+		USER_IP=$(eval echo \$outbounds_ip_${out})
+		USER_GW=$(eval echo \$outbounds_gw_${out})
+		if [ "${FIXED_DEV}" != "" -a "${FIXED_IP}" != "" -a "${FIXED_GW}" != "" ]
+		then
+			userid=$(id -u $username)
+			if [ $userid -ne 0 ]
+			then
+				print_debug "Creating routing table '$userid'..."
+				exec_command ip route flush table ${userid}
+				exec_command ip route add default via ${USER_GW} dev ${USER_DEV} table ${userid}
+
+				print_debug "Setting up route for user '$username'..."
+				exec_command ip rule add uidrange ${userid}-${userid} lookup ${userid}
+
+				set_rp_filter ${USER_DEV} 2
+			else
+				print_notice " - Username '$username' seems to be invalid."
+			fi
+		else
+			print_notice " - unable to set user route because '$out' is invalid."
+		fi
+	done
+
+	print_notice "Adding default rules..."
+	add_rule $TABLE_NAME postrouting oifname "${WAN_DEV}" iifname ${INTERNAL} snat to ${WAN_IP}
 	exec_command ip route add default via ${WAN_GW} dev ${WAN_DEV}
 
-	echo "All done!" | tee -a $LOG_FILE
+	if [ -n $REDIRECT_DNS ]
+	then
+		print_notice "Rerouting all DNS queries to port '$REDIRECT_DNS'..."
+		add_rule $TABLE_NAME prerouting iifname "$INTERNAL" udp dport 53 redirect to $REDIRECT_DNS
+	fi
+
+	print_notice "Setting up connectivity watchdog..."
+
+	print_notice "All done!"
 	exit 0
 
 else
 
-	echo ERROR: invalid $DEFAULT_ROUTE | tee -a $LOG_FILE
+	print_notice "ERROR: invalid $DEFAULT_ROUTE"
 	exit 255
 
 fi
 
+
+# Notes:
+#   This script does not REMOVE fixed route or user routes that have been REMOVED from the configuration file, but will add new ones or edit existing ones.
