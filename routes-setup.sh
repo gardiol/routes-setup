@@ -17,7 +17,7 @@ function print_notice
 function exec_command
 {
 	local command=$@
-	print_debug "- running command: '"$command"'"
+	print_notice "- running command: '"$command"'"
 	$command &>> $LOG_FILE
 }
 
