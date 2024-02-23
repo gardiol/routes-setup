@@ -11,8 +11,8 @@ source /etc/conf.d/routes-setup
 test ${TEST_ONLY} -eq 1 && DEBUG=1
 
 # Check valid log file
-test -z ${LOG_FILE} && LOG_FILE=/dev/null
-if [ ! -e ${LOG_FILE} ]
+test -z "${LOG_FILE}" && LOG_FILE=/dev/null
+if [ ! -e "${LOG_FILE}" ]
 then
 	LOG_FILE=/dev/null
 fi
@@ -20,29 +20,28 @@ fi
 # loggig, debugging and general print functions
 function print_debug
 {
-	test ${DEBUG} -eq 1 && echo ' [DEBUG] '$@  | tee -a ${LOG_FILE}
+	test ${DEBUG} -eq 1 && echo ' [DEBUG] '$@  | tee -a "${LOG_FILE}"
 }
 
 function print_notice
 {
-	echo $@ | tee -a ${LOG_FILE}
+	echo $@ | tee -a "${LOG_FILE}"
 }
 
 function print_error
 {
-	echo ' [ERROR] '$@ | tee -a ${LOG_FILE}
+	echo ' [ERROR] '$@ | tee -a "${LOG_FILE}"
 }
 
 # Execute a command, log it and obey the TEST_ONLY flag
 function exec_command
 {
-	local command=$@
-	print_notice "- running command: '"${command}"'"
+	print_notice "- running command: '""$@""'"
 	if [ ${TEST_ONLY} -eq 1 ]
 	then
 		print_notice " (command not executed because TEST_ONLY=1) "
 	else
-		${command} &>> ${LOG_FILE}
+		"$@" &>> "${LOG_FILE}"
 	fi
 }
 
