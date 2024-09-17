@@ -1,62 +1,49 @@
 
-# Actually perform changes or print only: 
-# TEST_ONLY=1 # nothing will be performed, actions will be printed only. This will set DEBUG=1 too
-# TEST_ONLY=0 # things will happen for real
+# Disable all operations, print only what would be done:
 TEST_ONLY=1
 
-# Enable additional debug prints:
-#  DEBUG=0 # no extra output
-#  DEBUG=1 # lots of extra output
+# Enable extra debug output:
 DEBUG=1
 
-# Name of table in nft to be created
-#  Don't change unless you need to
-TABLE_NAME=routes-setup-nat
+# Log file
+LOG_FILE="/var/log/routes-setup.log"
 
-# Path of log file. Remeber to rotate it with your log rotator of choice!
-#  If omitted, will disable logfile (/dev/null)
-LOG_FILE=/var/log/routes-setup.log
+# Internal interface, home-network side. This interface will _not_ be modified in any way:
+INTERNAL="eth0"
 
-# Internal interface, LAN
-INTERNAL=enp0s31f6
+# Outbound interfaces. These interfaces will be reprogrammed:
+EXTERNAL=("fiber" "adsl")
 
-# Outbound interfaces
-#  Format is: name:dev:ip:gateway
-#   Where: 
-#      name: user-specified name to be used in other rules
-#       dev: network interface (see /sys/class/net)
-#        ip: IP address (static!) assigned to the 'dev' interface
-#   gateway: IP address of the gateway on the 'dev' interface
-OUTBOUNDS="isp2:enp59s0u2u4c2:192.168.1.10:192.168.1.254 isp1:enp0s20f0u4u4c2:192.168.0.10:192.168.0.1 mobile:enp0s20f0u5u3:192.168.42.10:192.168.42.129"
+# For each interface, you must define the hardware device, the local IP to be used (static) and the gateway ip (= ISP device IP). Also, one "default" is required.
+EXTERNAL_IF["adsl"]="eth1"
+EXTERNAL_IP["adsl"]="192.168.1.10"
+EXTERNAL_GW["adsl"]="192.168.1.254"
+EXTERNAL_STATUS["adsl"]="failback"
 
-# Fixed routes by destination
-#  format is: destination:outbound
-#   Where:
-#     destination: IP or subnet of the destination
-#        outbound: name of the outbound interface (see "Outbound interfaces" name field)
-FIXED_ROUTES="99.99.99.99:isp2 77.77.77.77:isp1"
+EXTERNAL_IF["fiber"]="eth2"
+EXTERNAL_IP["fiber"]="192.168.0.10"
+EXTERNAL_GW["fiber"]="192.168.0.1"
+EXTERNAL_STATUS["fiber"]="default"
 
-# Special routes by users
-#  format is: user:outbound
-#   Where:
-#        user: name or UID of the user
-#    outbound: name of the outbound interface (see "Outbound interfaces" name field)
-USER_ROUTES="user1:isp1 user2:isp2"
+# Fixed routes ip:unused (use only IPs!). "switch" and "fixed" are currently unused, but required (either one doesnt matter)
+FIXED_ROUTES["fiber"]="77.77.77.77:switch"
+FIXED_ROUTES["adsl"]="99.99.99.99:fixed 99.99.99.100:switch"  
 
-# Default route for internal SNAT and local routing 
-DEFAULT_ROUTE="isp1"
+# User specific routes ip:unused (use only IPs!). "switch" and "fixed" are currently unused, but required (either one doesnt matter)
+USER_ROUTES["adsl"]="nzbget:fixed transmission:switch deluge:switch"
 
-# Failback settings for automatic handover
-#            FAILBACK_ROUTE: outbound interface to use as fialback when DEFAULT_ROUTE fails (leave empty to prevent automatic failback switching)
-#      FAILBACK_ROUTE_CHECK: which hostname and port to use for checking when DEFAULT_ROUTE goes down. Format is host/port (ex: www.google.it/80)
-#   FAILBACK_ROUTE_INTERVAL: time, in seconds, to wait before chekcing
-FAILBACK_ROUTE="mobile"
-FAILBACK_ROUTE_CHECK="www.google.com/80"
-FAILBACK_ROUTE_INTERVAL=60
+# Routing settings (use only IPs!)
+#ROUTE_CHECK_IP="1.1.1.1 8.8.8.8"
+#ROUTE_CHECK_INTERVAL=60
 
-# enable DNS redirect (to prevent devices to forcefully use wired-in DNSs)
-#  format is: port (leave empty to disable)
-#   Where:
-#    port: port where your local DNS service is listening
-#REDIRECT_DNS=53
+# enable DNS redirect (to prevent devices to forcefully use wired-in DNSs): 1= enable, 0=disable
+REDIRECT_DNS=1
+
+# Notifications
+ENABLE_EMAIL=0
+EMAIL_SENDER_NAME="Willy Gardiol"
+EMAIL_SENDER_ADDRESS="willy@gardiol.org"
+EMAIL_RECEIVER_ADDRESS="willy@gardiol.org other.email@gmail.com"
+EMAIL_SUBJECT="Routes setup notification"
+
 
